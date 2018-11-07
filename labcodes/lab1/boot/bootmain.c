@@ -32,6 +32,7 @@
 
 #define SECTSIZE        512
 #define ELFHDR          ((struct elfhdr *)0x10000)      // scratch space
+// it's differnt the kern_init() entry 0x100000.That's defined in kernel.ld
 
 /* waitdisk - wait for disk ready */
 static void
@@ -57,7 +58,7 @@ readsect(void *dst, uint32_t secno) {
     waitdisk();
 
     // read a sector
-    insl(0x1F0, dst, SECTSIZE / 4);
+    insl(0x1F0, dst, SECTSIZE / 4);			// read to dst(destination) 幻数（elf->magic）4因为这里以DW为单位
 }
 
 /* *
@@ -72,7 +73,7 @@ readseg(uintptr_t va, uint32_t count, uint32_t offset) {
     va -= offset % SECTSIZE;
 
     // translate from bytes to sectors; kernel starts at sector 1
-    uint32_t secno = (offset / SECTSIZE) + 1;
+    uint32_t secno = (offset / SECTSIZE) + 1;		// 加1因为0扇区被BootLoader占用,ELF文件从1扇区开始
 
     // If this is too slow, we could read lots of sectors at a time.
     // We'd write more to memory than asked, but it doesn't matter --
@@ -104,7 +105,8 @@ bootmain(void) {
 
     // call the entry point from the ELF header
     // note: does not return
-    ((void (*)(void))(ELFHDR->e_entry & 0xFFFFFF))();
+	// (返回类型)函数名称（->也就是函数的入口地址）（参数表）
+    ((void (*)(void))(ELFHDR->e_entry & 0xFFFFFF))();   // it will turn to kern_init().
 
 bad:
     outw(0x8A00, 0x8A00);

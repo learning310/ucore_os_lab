@@ -468,7 +468,7 @@ page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
 // edited are the ones currently in use by the processor.
 void
 tlb_invalidate(pde_t *pgdir, uintptr_t la) {
-    if (rcr3() == PADDR(pgdir)) {
+    if (rcr3() == PADDR(pgdir)) {		// 这里等于修改cr3的寄存器的内容
         invlpg((void *)la);
     }
 }

@@ -43,6 +43,13 @@ endif
 # delete target files if there is an error (or make is interrupted)
 .DELETE_ON_ERROR:
 
+# -ggdb  生成可供gdb使用的调试信息。这样才能用qemu+gdb来调试bootloader or ucore。
+# -gstabs  生成stabs格式的调试信息。这样要ucore的monitor可以显示出便于开发者阅读的函数调用栈信息
+# -nostdinc  不使用标准库。标准库是给应用程序用的，我们是编译ucore内核，OS内核是提供服务的，所以所有的服务要自给自足。
+# -fno-stack-protector  不生成用于检测缓冲区溢出的代码。
+# -Os  为减小代码大小而进行优化。根据硬件spec，主引导扇区只有512字节，我们写的简单bootloader的最终大小不能大于510字节。
+# -fno-builtin  除非用__builtin_前缀，否则不进行builtin函数的优化
+
 # define compiler and flags
 ifndef  USELLVM
 HOSTCC		:= gcc
@@ -62,9 +69,12 @@ CTYPE	:= c S
 
 LD      := $(GCCPREFIX)ld
 LDFLAGS	:= -m $(shell $(LD) -V | grep elf_i386 2>/dev/null)
+# -m <emulation>  模拟为i386上的连接器
 LDFLAGS	+= -nostdlib
+# -nostdlib  不使用标准库
 
-OBJCOPY := $(GCCPREFIX)objcopy
+OBJCOPY := $(GCCPREFIX)objcopy		
+# objcpoy : 拷贝二进制文件
 OBJDUMP := $(GCCPREFIX)objdump
 
 COPY	:= cp
@@ -145,6 +155,7 @@ $(kernel): tools/kernel.ld
 $(kernel): $(KOBJS)
 	@echo + ld $@
 	$(V)$(LD) $(LDFLAGS) -T tools/kernel.ld -o $@ $(KOBJS)
+	# -T <scriptfile>  让连接器使用指定的脚本
 	@$(OBJDUMP) -S $@ > $(call asmfile,kernel)
 	@$(OBJDUMP) -t $@ | $(SED) '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $(call symfile,kernel)
 
@@ -161,17 +172,24 @@ bootblock = $(call totarget,bootblock)
 $(bootblock): $(call toobj,$(bootfiles)) | $(call totarget,sign)
 	@echo + ld $@
 	$(V)$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 $^ -o $(call toobj,bootblock)
+	# 使得bootasm生成的代码段指向0x7C00 -Ttext  指定代码段开始位置
+	# -N  设置代码段和数据段均可读写
+	# -e <entry>  指定入口
 	@$(OBJDUMP) -S $(call objfile,bootblock) > $(call asmfile,bootblock)
 	@$(OBJCOPY) -S -O binary $(call objfile,bootblock) $(call outfile,bootblock)
+	# -S 移除所有符号和重定位信息
+	# -O <bfdname>  指定输出格式
 	@$(call totarget,sign) $(call outfile,bootblock) $(bootblock)
 
 $(call create_target,bootblock)
+# mark: 为了生成bootblock，首先需要生成bootasm.o、bootmain.o、sign
 
 # -------------------------------------------------------------------
 
 # create 'sign' tools
 $(call add_files_host,tools/sign.c,sign,sign)
 $(call create_target_host,sign,sign)
+# mark: 创建sign根据为了检测BootLoader的合法性
 
 # -------------------------------------------------------------------
 
@@ -180,8 +198,11 @@ UCOREIMG	:= $(call totarget,ucore.img)
 
 $(UCOREIMG): $(kernel) $(bootblock)
 	$(V)dd if=/dev/zero of=$@ count=10000
-	$(V)dd if=$(bootblock) of=$@ conv=notrunc
+	# 生成一个有10000个块的文件，每个块默认512字节，用0填充
+	$(V)dd if=$(bootblock) of=$@ conv=notrunc	
+	# 把bootblock中的内容写到第一个磁盘块
 	$(V)dd if=$(kernel) of=$@ seek=1 conv=notrunc
+	# 从第二个块开始写kernel中的内容
 
 $(call create_target,ucore.img)
 
@@ -220,6 +241,8 @@ debug: $(UCOREIMG)
 	$(V)$(QEMU) -S -s -parallel stdio -hda $< -serial null &
 	$(V)sleep 2
 	$(V)$(TERMINAL) -e "gdb -q -tui -x tools/gdbinit"
+# $(V)$(TERMINAL) -e "$(QEMU) -S -s -d in_asm -D $(BINDIR)/q.log -parallel stdio -hda $< -serial null"
+# 在调用qemu时增加-d in_asm -D q.log参数，便可以将运行的汇编指令保存在q.log中。	
 	
 debug-nox: $(UCOREIMG)
 	$(V)$(QEMU) -S -s -serial mon:stdio -hda $< -nographic &

@@ -103,6 +103,7 @@ bootmain(void) {
 
     // call the entry point from the ELF header
     // note: does not return
+	// mark: (返回类型)函数名称（->也就是函数的入口地址）（参数表）
     ((void (*)(void))(ELFHDR->e_entry & 0xFFFFFF))();
 
 bad:

@@ -34,12 +34,12 @@
  *                            |         Empty Memory (*)        |
  *                            |                                 |
  *                            +---------------------------------+ 0xFB000000
- *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE
+ *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE(4MB)
  *     VPT -----------------> +---------------------------------+ 0xFAC00000
  *                            |        Invalid Memory (*)       | --/--
  *     KERNTOP -------------> +---------------------------------+ 0xF8000000
  *                            |                                 |
- *                            |    Remapped Physical Memory     | RW/-- KMEMSIZE
+ *                            |    Remapped Physical Memory     | RW/-- KMEMSIZE(896MB)
  *                            |                                 |
  *     KERNBASE ------------> +---------------------------------+ 0xC0000000
  *                            |                                 |
@@ -49,6 +49,11 @@
  * (*) Note: The kernel ensures that "Invalid Memory" is *never* mapped.
  *     "Empty Memory" is normally unmapped, but user programs may map pages
  *     there if desired.
+ * 
+ * (*) Mark:我的PTSIZE推理过程
+ *		根据实际内存的大小 即896MB映射内存 -> 229,376个内存页 ---->
+ *	   	-> page table(10 bits) 所占空间为：896KB 即224个内存页
+ *		-> page directory(10 bits) 224项  由于内存管理基于页，故所占内存为4KB 1页
  *
  * */
 
@@ -59,9 +64,9 @@
 
 /* *
  * Virtual page table. Entry PDX[VPT] in the PD (Page Directory) contains
- * a pointer to the page directory itself, thereby turning the PD into a page
+ * a pointer to the page directory itself, thereby(从而) turning the PD into a page
  * table, which maps all the PTEs (Page Table Entry) containing the page mappings
- * for the entire virtual address space into that 4 Meg region starting at VPT.
+ * for the entire virtual address space into that 4 MB region starting at VPT.
  * */
 #define VPT                 0xFAC00000
 

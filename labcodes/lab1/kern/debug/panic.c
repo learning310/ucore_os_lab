@@ -24,7 +24,7 @@ __panic(const char *file, int line, const char *fmt, ...) {
     cprintf("\n");
     
     cprintf("stack trackback:\n");
-    print_stackframe();
+    print_stackframe();				// mark: entry of practice 1.
     
     va_end(ap);
 

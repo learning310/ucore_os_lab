@@ -22,8 +22,8 @@ syscall(int num, ...) {
     asm volatile (
         "int %1;"
         : "=a" (ret)
-        : "i" (T_SYSCALL),
-          "a" (num),
+        : "i" (T_SYSCALL),	// this is intertupt vector number of SYSCALL
+          "a" (num),		// this is specific syscall number 
           "d" (a[0]),
           "c" (a[1]),
           "b" (a[2]),

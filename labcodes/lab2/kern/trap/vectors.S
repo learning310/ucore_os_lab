@@ -1,4 +1,5 @@
 # handler
+# __vectors[] is in kern/trap/vector.S which is produced by tools/vector.c
 .text
 .globl __alltraps
 .globl vector0

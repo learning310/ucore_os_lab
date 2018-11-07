@@ -11,8 +11,10 @@
 
 #define TICK_NUM 100
 
+// static function only available for this file
 static void print_ticks() {
     cprintf("%d ticks\n",TICK_NUM);
+
 #ifdef DEBUG_GRADE
     cprintf("End of Test.\n");
     panic("EOT: kernel seems ok.");
@@ -28,7 +30,7 @@ static void print_ticks() {
 static struct gatedesc idt[256] = {{0}};
 
 static struct pseudodesc idt_pd = {
-    sizeof(idt) - 1, (uintptr_t)idt
+    sizeof(idt) - 1, (uintptr_t)idt		// this minus one probably because zero is a number
 };
 
 /* idt_init - initialize IDT to each of the entry points in kern/trap/vectors.S */
@@ -37,7 +39,7 @@ idt_init(void) {
      /* LAB1 YOUR CODE : STEP 2 */
      /* (1) Where are the entry addrs of each Interrupt Service Routine (ISR)?
       *     All ISR's entry addrs are stored in __vectors. where is uintptr_t __vectors[] ?
-      *     __vectors[] is in kern/trap/vector.S which is produced by tools/vector.c
+      * --> __vectors[] is in kern/trap/vector.S which is produced by tools/vector.c
       *     (try "make" command in lab1, then you will find vector.S in kern/trap DIR)
       *     You can use  "extern uintptr_t __vectors[];" to define this extern variable which will be used later.
       * (2) Now you should setup the entries of ISR in Interrupt Description Table (IDT).
@@ -46,6 +48,19 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+	extern uintptr_t __vectors[];
+	int i;
+	for(i=0; i < sizeof(idt) / sizeof(struct gatedesc); i++){
+		SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
+	}
+	//we need set a swith for user to kernel entry for challenge 1.
+	SETGATE(idt[T_SWITCH_TOK], 1, KERNEL_CS, __vectors[T_SWITCH_TOK], DPL_USER);
+ 	// ERROR: Can't do this.Because it's finish in for loop.
+    // Above statement is for user it have privilege transform.
+	// SETGATE(idt[T_SWITCH_TOU], 1, USER_CS, __vectors[T_SWITCH_TOU], DPL_KERNEL);
+	
+	// load the IDT. It include a base address and a limit��
+	lidt(&idt_pd);	// IDTR regsister	
 }
 
 static const char *
@@ -134,6 +149,9 @@ print_regs(struct pushregs *regs) {
     cprintf("  eax  0x%08x\n", regs->reg_eax);
 }
 
+/* temporary trapframe or pointer to trapframe */
+struct trapframe switchk2u, *switchutk;
+
 /* trap_dispatch - dispatch based on what type of trap occurred */
 static void
 trap_dispatch(struct trapframe *tf) {
@@ -147,6 +165,10 @@ trap_dispatch(struct trapframe *tf) {
          * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
          * (3) Too Simple? Yes, I think so!
          */
+		ticks++;
+		if (ticks % TICK_NUM == 0) {
+            print_ticks();
+        }
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
@@ -157,9 +179,39 @@ trap_dispatch(struct trapframe *tf) {
         cprintf("kbd [%03d] %c\n", c, c);
         break;
     //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
-    case T_SWITCH_TOU:
-    case T_SWITCH_TOK:
-        panic("T_SWITCH_** ??\n");
+    case T_SWITCH_TOU:	// user
+		if(tf->tf_cs != USER_CS){
+            // mark: two solution
+            // 1.in lab1_switch_to_user add "sub $0x8, %esp" so that the trapframe will be real for ss and esp
+			
+            tf->tf_cs = USER_CS;
+            tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+            tf->tf_eflags |= FL_IOPL_MASK;	// make sure ucore can use I/O under user mode.
+            tf->tf_esp = (uint32_t)tf + sizeof(struct trapframe) - 8;	// 这里的esp是为了让lab1_switch_to_user()函数正常返回，也就是设置ESP为该函数的返回地址
+
+            // 2.新建一个trapframe的结构，改变push压入栈中的esp的值
+			
+            switchk2u = *tf; // copy all of current tf
+            switchk2u.tf_cs = USER_CS;
+			switchk2u.tf_ds = switchk2u.tf_es = switchk2u.tf_ss = USER_DS;  // initial all of segnment regsister
+            switchk2u.tf_esp = (uint32_t)tf + sizeof(struct trapframe) - 8; // 8 因为内核中断缺失ss和esp，所以需要做减法
+            // 该句存在内核栈与用户栈直接的冲突关系。跳转到中断处理程序时，如果是往更高的特权级，新的栈位置由TSS给出。所以，此时的内核栈和用户栈相邻应该没事！！！
+
+            // set eflags, make sure ucore can use I/O under user mode.
+            // if CPL > IOPL, then cpu will generate a general protection.
+            switchk2u.tf_eflags |= FL_IOPL_MASK;
+            // set temporary stack
+            // then iret will jump to the right stack
+            *((uint32_t *)tf - 1) = (uint32_t)&switchk2u;	
+			// 因为push压入占中的值比它本身所在地址小一个4字节大小（栈的地址由大到小）所以需要减一
+        }
+		break;
+    case T_SWITCH_TOK:	// kernal
+		if (tf->tf_cs != KERNEL_CS) {
+            tf->tf_cs = KERNEL_CS;
+            tf->tf_ds = tf->tf_es = KERNEL_DS;
+            tf->tf_eflags &= ~FL_IOPL_MASK; 	// forbid I/O ?
+        }
         break;
     case IRQ_OFFSET + IRQ_IDE1:
     case IRQ_OFFSET + IRQ_IDE2:

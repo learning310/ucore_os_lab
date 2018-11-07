@@ -22,12 +22,13 @@ start:
     movw %ax, %es                                   # -> Extra Segment
     movw %ax, %ss                                   # -> Stack Segment
 
-    # Enable A20:
+    # Enable A20: for 32 address lines is available
     #  For backwards compatibility with the earliest PCs, physical
     #  address line 20 is tied low, so that addresses higher than
-    #  1MB wrap around to zero by default. This code undoes this.
+    #  1MB wrap("回卷") around to zero by default. This code undoes this.
+	
 seta20.1:
-    inb $0x64, %al                                  # Wait for not busy(8042 input buffer empty).
+    inb $0x64, %al                                  # Wait for not busy(8042 input buffer empty). in = read
     testb $0x2, %al
     jnz seta20.1
 
@@ -46,13 +47,15 @@ seta20.2:
     # and segment translation that makes virtual addresses
     # identical to physical addresses, so that the
     # effective memory map does not change during the switch.
-    lgdt gdtdesc
-    movl %cr0, %eax
+
+    lgdt gdtdesc			# load the GDT
+    movl %cr0, %eax	
     orl $CR0_PE_ON, %eax
-    movl %eax, %cr0
+    movl %eax, %cr0			# 进入保护模式：通过将cr0寄存器PE位置1便开启了保护模式
 
     # Jump to next instruction, but in 32-bit code segment.
     # Switches processor into 32-bit mode.
+	# mark: 这条指令会将$PROT_MODE_CSEG加载到cs中，cs对应的高速缓冲存储器会加载代码段描述符,同样将$protcseg加载到ip中 
     ljmp $PROT_MODE_CSEG, $protcseg
 
 .code32                                             # Assemble for 32-bit mode

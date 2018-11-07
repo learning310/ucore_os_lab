@@ -157,7 +157,8 @@ sys_dup(uint32_t arg[]) {
     return sysfile_dup(fd1, fd2);
 }
 
-static int (*syscalls[])(uint32_t arg[]) = {
+// use function-pointer for offer an general interface
+static int (*syscalls[])(uint32_t arg[]) = {	
     [SYS_exit]              sys_exit,
     [SYS_fork]              sys_fork,
     [SYS_wait]              sys_wait,

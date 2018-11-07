@@ -60,7 +60,8 @@ struct pushregs {
 };
 
 struct trapframe {
-    struct pushregs tf_regs;
+    // padding:填充
+    struct pushregs tf_regs;    // 由汇编指令pushal完成
     uint16_t tf_gs;
     uint16_t tf_padding0;
     uint16_t tf_fs;
