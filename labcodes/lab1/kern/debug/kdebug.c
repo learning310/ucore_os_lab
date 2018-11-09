@@ -303,7 +303,7 @@ print_stackframe(void) {
       *                   the calling funciton's ebp = ss:[ebp]
       */
 	uint32_t ebp = read_ebp(), eip = read_eip();
-	int i;
+	int i,j;
 	for (i = 0; i < STACKFRAME_DEPTH; i++) {
 		cprintf("ebp:0x%08x eip:0x%08x args:", ebp, eip);
 		uint32_t *pointer = (uint32_t *)ebp + 2;
