@@ -39,6 +39,7 @@ struct Page *pages;
 size_t npage = 0;
 
 // virtual address of boot-time page directory
+// mark: __boot_pgdir defination in entry.s
 extern pde_t __boot_pgdir;
 pde_t *boot_pgdir = &__boot_pgdir;
 // physical address of boot-time page directory
@@ -130,6 +131,7 @@ gdt_init(void) {
     gdt[SEG_TSS] = SEGTSS(STS_T32A, (uintptr_t)&ts, sizeof(ts), DPL_KERNEL);
 
     // reload all segment registers
+	// mark: This is the second and the last set the GDT
     lgdt(&gdt_pd);
 
     // load the TSS
@@ -202,7 +204,7 @@ nr_free_pages(void) {
 /* pmm_init - initialize the physical memory management */
 static void
 page_init(void) {
-    struct e820map *memmap = (struct e820map *)(0x8000 + KERNBASE);
+    struct e820map *memmap = (struct e820map *)(0x8000 + KERNBASE);		// 读取BootLoader填充配置的e820map结构
     uint64_t maxpa = 0;
 
     cprintf("e820map:\n");
@@ -224,13 +226,14 @@ page_init(void) {
     extern char end[];
 
     npage = maxpa / PGSIZE;
-    pages = (struct Page *)ROUNDUP((void *)end, PGSIZE);
+    pages = (struct Page *)ROUNDUP((void *)end, PGSIZE);	// 填充配置page frame的数据结构page
 
     for (i = 0; i < npage; i ++) {
-        SetPageReserved(pages + i);
-    }
+        SetPageReserved(+ + i);
+    }	// set PG_reserved, 这种方式就把所有的内存空间先设置为内核使用，然后由init_memmap来完成对分配内存的配置
+		// 也就防止内核的数据结构所在区域不可以被访问。
 
-    uintptr_t freemem = PADDR((uintptr_t)pages + sizeof(struct Page) * npage);
+    uintptr_t freemem = PADDR((uintptr_t)pages + sizeof(struct Page) * npage);	// 初始化freemem
 
     for (i = 0; i < memmap->nr_map; i ++) {
         uint64_t begin = memmap->map[i].addr, end = begin + memmap->map[i].size;
@@ -246,6 +249,8 @@ page_init(void) {
                 end = ROUNDDOWN(end, PGSIZE);
                 if (begin < end) {
                     init_memmap(pa2page(begin), (end - begin) / PGSIZE);
+					// init_memmap:在这里完成Page结构中的flags和引用计数ref清零，并加到free_area.free_list指向的双向列表
+					// pa2page:将begin地址对应的那个page的数据结构的地址得出作为参数传递至init_memmap
                 }
             }
         }
@@ -258,10 +263,12 @@ page_init(void) {
 //  size: memory size
 //  pa:   physical address of this memory
 //  perm: permission of this memory  
+//  prototype: boot_map_segment(boot_pgdir, KERNBASE, KMEMSIZE, 0, PTE_W);
 static void
 boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, uintptr_t pa, uint32_t perm) {
     assert(PGOFF(la) == PGOFF(pa));
     size_t n = ROUNDUP(size + PGOFF(la), PGSIZE) / PGSIZE;
+	//PGOFF为偏移地址,算出所需要管理的内存有多少页？
     la = ROUNDDOWN(la, PGSIZE);
     pa = ROUNDDOWN(pa, PGSIZE);
     for (; n > 0; n --, la += PGSIZE, pa += PGSIZE) {
@@ -321,6 +328,7 @@ pmm_init(void) {
     // map virtual_addr 0 ~ 4G = linear_addr 0 ~ 4G
     // then set kernel stack (ss:esp) in TSS, setup TSS in gdt, load TSS
     gdt_init();
+	// when it finished, new mapping relationship -> virt addr = linear addr = phy addr + 0xC0000000
 
     //now the basic virtual memory map(see memalyout.h) is established.
     //check the correctness of the basic virtual memory map.
@@ -372,6 +380,20 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     }
     return NULL;          // (8) return page table entry
 #endif
+	pde_t *pdep = &pgdir[PDX(la)];
+	if( !(*pdep & PTE_P) ){
+		struct Page *page = NULL;
+		if( (!create) || (page = alloc_page()) == NULL){
+			return NULL;
+		}
+		set_page_ref(page,1);
+		uintptr_t pa = page2pa(page);
+		memset(KADDR(pa), 0, PGSIZE);
+		*pdep = pa | PTE_U | PTE_W | PTE_P;
+	}
+	return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];		
+	//根据pde中所存储的pte的地址以指针形式开始访问，并根据所给的虚拟地址进行index的确定
+	//使用KADDR的原因是因为现在的映射机制需要一个虚拟地址来进行访问，前面只是为了内存初始化需要pa地址
 }
 
 //get_page - get related Page struct for linear address la using PDT pgdir
@@ -417,6 +439,15 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
+	if( *ptep & PTE_P ){
+		struct Page *page = NULL;
+		page = pte2page(&ptep);
+		if( page_ref_dec(page) == 0){
+			free_page(page);
+		}
+		*ptep = 0;
+		tlb_invalidate(pgdir, la);
+	}
 }
 
 //page_remove - free an Page which is related linear address la and has an validated pte

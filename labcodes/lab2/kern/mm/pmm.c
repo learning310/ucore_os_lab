@@ -116,7 +116,7 @@ lgdt(struct pseudodesc *pd) {
 void
 load_esp0(uintptr_t esp0) {
     ts.ts_esp0 = esp0;
-}
+} n0mok-m67
 
 /* gdt_init - initialize the default GDT and TSS */
 static void
@@ -129,7 +129,7 @@ gdt_init(void) {
     gdt[SEG_TSS] = SEGTSS(STS_T32A, (uintptr_t)&ts, sizeof(ts), DPL_KERNEL);
 
     // reload all segment registers
-	// mark: This is the second set the GDT
+	// mark: This is the second and the last set the GDT
     lgdt(&gdt_pd);
 
     // load the TSS
@@ -251,10 +251,12 @@ page_init(void) {
 //  size: memory size
 //  pa:   physical address of this memory
 //  perm: permission of this memory  
+//  prototype: boot_map_segment(boot_pgdir, KERNBASE, KMEMSIZE, 0, PTE_W);
 static void
 boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, uintptr_t pa, uint32_t perm) {
     assert(PGOFF(la) == PGOFF(pa));
-    size_t n = ROUNDUP(size + PGOFF(la), PGSIZE) / PGSIZE;
+    size_t n = ROUNDUP(size + PGOFF(la), PGSIZE) / PGSIZE;	
+	//PGOFF为偏移地址,算出所需要管理的内存有多少页？
     la = ROUNDDOWN(la, PGSIZE);
     pa = ROUNDDOWN(pa, PGSIZE);
     for (; n > 0; n --, la += PGSIZE, pa += PGSIZE) {
@@ -424,6 +426,15 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
+	if( *ptep & PTE_P ){
+		struct Page *page = NULL;
+		page = pte2page(&ptep);
+		if( page_ref_dec(page) == 0){
+			free_page(page);
+		}
+		*ptep = 0;
+		tlb_invalidate(pgdir, la);
+	}
 }
 
 //page_remove - free an Page which is related linear address la and has an validated pte
