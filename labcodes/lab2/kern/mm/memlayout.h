@@ -10,7 +10,7 @@
 #define SEG_UDATA   4
 #define SEG_TSS     5
 
-/* global descrptor numbers */
+/* global descriptor numbers */
 #define GD_KTEXT    ((SEG_KTEXT) << 3)      // kernel text
 #define GD_KDATA    ((SEG_KDATA) << 3)      // kernel data
 #define GD_UTEXT    ((SEG_UTEXT) << 3)      // user text
@@ -49,7 +49,7 @@
  * (*) Note: The kernel ensures that "Invalid Memory" is *never* mapped.
  *     "Empty Memory" is normally unmapped, but user programs may map pages
  *     there if desired.
- * 
+ *
  * (*) Mark:我的PTSIZE推理过程
  *		根据实际内存的大小 即896MB映射内存 -> 229,376个内存页 ---->
  *	   	-> page table(10 bits) 所占空间为：896KB 即224个内存页

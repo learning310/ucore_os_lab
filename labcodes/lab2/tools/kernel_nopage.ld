@@ -3,8 +3,7 @@
 
 OUTPUT_FORMAT("elf32-i386", "elf32-i386", "elf32-i386")
 OUTPUT_ARCH(i386)
-ENTRY(kern_entry)	
-/* 这个入口使得bootmain执行完然后会跳转至kern_entry，因为ucore的ELFHDR->e_entry还是0x0100000 */
+ENTRY(kern_entry)
 
 SECTIONS {
     /* Load the kernel at this address: "." means the current address */

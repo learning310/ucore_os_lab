@@ -84,12 +84,12 @@ cga_init(void) {
     // 6845 reg 15 : Cursor Address (Low Byte)
     uint32_t pos;
     outb(addr_6845, 14);
-    pos = inb(addr_6845 + 1) << 8;                       //读出了光标位置(高位)
+    pos = inb(addr_6845 + 1) << 8;
     outb(addr_6845, 15);
-    pos |= inb(addr_6845 + 1);                             //读出了光标位置(低位)
+    pos |= inb(addr_6845 + 1);
 
-    crt_buf = (uint16_t*) cp;                                  //crt_buf是CGA显存起始地址
-    crt_pos = pos;                                                  //crt_pos是CGA当前光标位置
+    crt_buf = (uint16_t*) cp;
+    crt_pos = pos;
 }
 
 static bool serial_exists = 0;

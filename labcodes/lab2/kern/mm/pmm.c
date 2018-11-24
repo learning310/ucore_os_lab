@@ -116,7 +116,7 @@ lgdt(struct pseudodesc *pd) {
 void
 load_esp0(uintptr_t esp0) {
     ts.ts_esp0 = esp0;
-} n0mok-m67
+}
 
 /* gdt_init - initialize the default GDT and TSS */
 static void
@@ -217,10 +217,10 @@ page_init(void) {
     pages = (struct Page *)ROUNDUP((void *)end, PGSIZE);	// 填充配置page frame的数据结构page
 
     for (i = 0; i < npage; i ++) {
-        SetPageReserved(+ + i);
+        SetPageReserved(pages + i);
     }	// set PG_reserved, 这种方式就把所有的内存空间先设置为内核使用，然后由init_memmap来完成对分配内存的配置
 		// 也就防止内核的数据结构所在区域不可以被访问。
-	
+
     uintptr_t freemem = PADDR((uintptr_t)pages + sizeof(struct Page) * npage);	// 初始化freemem
 
     for (i = 0; i < memmap->nr_map; i ++) {
@@ -236,7 +236,7 @@ page_init(void) {
                 begin = ROUNDUP(begin, PGSIZE);
                 end = ROUNDDOWN(end, PGSIZE);
                 if (begin < end) {
-                    init_memmap(pa2page(begin), (end - begin) / PGSIZE);	
+                    init_memmap(pa2page(begin), (end - begin) / PGSIZE);
 					// init_memmap:在这里完成Page结构中的flags和引用计数ref清零，并加到free_area.free_list指向的双向列表
 					// pa2page:将begin地址对应的那个page的数据结构的地址得出作为参数传递至init_memmap
                 }
@@ -255,7 +255,7 @@ page_init(void) {
 static void
 boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, uintptr_t pa, uint32_t perm) {
     assert(PGOFF(la) == PGOFF(pa));
-    size_t n = ROUNDUP(size + PGOFF(la), PGSIZE) / PGSIZE;	
+    size_t n = ROUNDUP(size + PGOFF(la), PGSIZE) / PGSIZE;
 	//PGOFF为偏移地址,算出所需要管理的内存有多少页？
     la = ROUNDDOWN(la, PGSIZE);
     pa = ROUNDDOWN(pa, PGSIZE);
@@ -365,20 +365,21 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
         uintptr_t pa = 0; // (5) get linear address of page
                           // (6) clear page content using memset
                           // (7) set page directory entry's permission
+    }
     return NULL;          // (8) return page table entry
 #endif
-	pde_t *pdep = &pgdir[PDX(la)];
-	if( !(*pdep & PTE_P) ){
-		struct Page *page = NULL;
-		if( (!create) || (page = alloc_page()) == NULL){
-			return NULL;
-		}
-		set_page_ref(page,1);
-		uintptr_t pa = page2pa(page);
-		memset(KADDR(pa), 0, PGSIZE);
-		*pdep = pa | PTE_U | PTE_W | PTE_P;
-	}
-	return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];		
+    pde_t *pdep = &pgdir[PDX(la)];
+    if (!(*pdep & PTE_P)) {
+        struct Page *page;
+        if (!create || (page = alloc_page()) == NULL) {
+            return NULL;
+        }
+        set_page_ref(page, 1);
+        uintptr_t pa = page2pa(page);
+        memset(KADDR(pa), 0, PGSIZE);
+        *pdep = pa | PTE_U | PTE_W | PTE_P;
+    }
+    return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
 	//根据pde中所存储的pte的地址以指针形式开始访问，并根据所给的虚拟地址进行index的确定
 	//使用KADDR的原因是因为现在的映射机制需要一个虚拟地址来进行访问，前面只是为了内存初始化需要pa地址
 }
@@ -426,15 +427,14 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
-	if( *ptep & PTE_P ){
-		struct Page *page = NULL;
-		page = pte2page(&ptep);
-		if( page_ref_dec(page) == 0){
-			free_page(page);
-		}
-		*ptep = 0;
-		tlb_invalidate(pgdir, la);
-	}
+    if (*ptep & PTE_P) {
+        struct Page *page = pte2page(*ptep);
+        if (page_ref_dec(page) == 0) {
+            free_page(page);
+        }
+        *ptep = 0;
+        tlb_invalidate(pgdir, la);
+    }
 }
 
 //page_remove - free an Page which is related linear address la and has an validated pte

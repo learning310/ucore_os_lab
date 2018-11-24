@@ -23,7 +23,7 @@ start:
     movw %ax, %es                                   # -> Extra Segment
     movw %ax, %ss                                   # -> Stack Segment
 
-    #  Enable A20: for 32 address lines is available
+    # Enable A20: for 32 address lines is available
     #  For backwards compatibility with the earliest PCs, physical
     #  address line 20 is tied low, so that addresses higher than
     #  1MB wrap("回卷") around to zero by default. This code undoes this.
@@ -53,7 +53,7 @@ probe_memory:
 start_probe:
     movl $0xE820, %eax		# INT 15的中断调用参数
     movl $20, %ecx			# 设置地址范围描述符的大小为20字节，其大小等于struct e820map的成员变量map的大小
-    movl $SMAP, %edx		
+    movl $SMAP, %edx
     int $0x15
     jnc cont
     movw $12345, 0x8000

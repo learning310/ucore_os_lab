@@ -11,6 +11,7 @@
 
 #define TICK_NUM 100
 
+// static function only available for this file
 static void print_ticks() {
     cprintf("%d ticks\n",TICK_NUM);
 #ifdef DEBUG_GRADE
@@ -28,7 +29,7 @@ static void print_ticks() {
 static struct gatedesc idt[256] = {{0}};
 
 static struct pseudodesc idt_pd = {
-    sizeof(idt) - 1, (uintptr_t)idt		// this minus one probably because zero is a member
+    sizeof(idt) - 1, (uintptr_t)idt		// this minus one probably because zero is a number
 };
 
 /* idt_init - initialize IDT to each of the entry points in kern/trap/vectors.S */
@@ -37,7 +38,7 @@ idt_init(void) {
      /* LAB1 YOUR CODE : STEP 2 */
      /* (1) Where are the entry addrs of each Interrupt Service Routine (ISR)?
       *     All ISR's entry addrs are stored in __vectors. where is uintptr_t __vectors[] ?
-      * --> __vectors[] is in kern/trap/vector.S which is produced by tools/vector.c
+      *     __vectors[] is in kern/trap/vector.S which is produced by tools/vector.c
       *     (try "make" command in lab1, then you will find vector.S in kern/trap DIR)
       *     You can use  "extern uintptr_t __vectors[];" to define this extern variable which will be used later.
       * (2) Now you should setup the entries of ISR in Interrupt Description Table (IDT).
@@ -148,7 +149,7 @@ print_regs(struct pushregs *regs) {
 }
 
 /* temporary trapframe or pointer to trapframe */
-struct trapframe switchk2u;
+struct trapframe switchk2u, *switchutk;
 
 /* trap_dispatch - dispatch based on what type of trap occurred */
 static void

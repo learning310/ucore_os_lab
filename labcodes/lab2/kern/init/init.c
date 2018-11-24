@@ -14,8 +14,6 @@ int kern_init(void) __attribute__((noreturn));
 void grade_backtrace(void);
 static void lab1_switch_test(void);
 
-// 当进入这个函数之后，我们的映射关系则是 -> 
-// virt addr - 0xC0000000 = linear addr = phy addr + 0xC0000000
 int
 kern_init(void) {
     extern char edata[], end[];

@@ -43,6 +43,13 @@ endif
 # delete target files if there is an error (or make is interrupted)
 .DELETE_ON_ERROR:
 
+# -ggdb  生成可供gdb使用的调试信息。这样才能用qemu+gdb来调试bootloader or ucore。
+# -gstabs  生成stabs格式的调试信息。这样要ucore的monitor可以显示出便于开发者阅读的函数调用栈信息
+# -nostdinc  不使用标准库。标准库是给应用程序用的，我们是编译ucore内核，OS内核是提供服务的，所以所有的服务要自给自足。
+# -fno-stack-protector  不生成用于检测缓冲区溢出的代码。
+# -Os  为减小代码大小而进行优化。根据硬件spec，主引导扇区只有512字节，我们写的简单bootloader的最终大小不能大于510字节。
+# -fno-builtin  除非用__builtin_前缀，否则不进行builtin函数的优化
+
 # define compiler and flags
 ifndef  USELLVM
 HOSTCC		:= gcc
@@ -63,9 +70,12 @@ CTYPE	:= c S
 
 LD      := $(GCCPREFIX)ld
 LDFLAGS	:= -m $(shell $(LD) -V | grep elf_i386 2>/dev/null)
+# -m <emulation>  模拟为i386上的连接器
 LDFLAGS	+= -nostdlib
+# -nostdlib  不使用标准库
 
 OBJCOPY := $(GCCPREFIX)objcopy
+# objcpoy : 拷贝二进制文件
 OBJDUMP := $(GCCPREFIX)objdump
 
 COPY	:= cp
@@ -145,6 +155,7 @@ $(call add_files_cc,$(call listf_cc,$(KSRCDIR)),kernel,$(KCFLAGS))
 KOBJS	= $(call read_packet,kernel libs)
 
 # create kernel target
+# -T <scriptfile>  让连接器使用指定的脚本
 kernel = $(call totarget,kernel)
 
 $(kernel): tools/kernel.ld
@@ -174,6 +185,8 @@ $(call create_target,kernel)
 # -------------------------------------------------------------------
 
 # create bootblock
+# -S 移除所有符号和重定位信息
+# -O <bfdname>  指定输出格式
 bootfiles = $(call listf_cc,boot)
 $(foreach f,$(bootfiles),$(call cc_compile,$(f),$(CC),$(CFLAGS) -Os -nostdinc))
 
@@ -182,7 +195,6 @@ bootblock = $(call totarget,bootblock)
 $(bootblock): $(call toobj,boot/bootasm.S) $(call toobj,$(bootfiles)) | $(call totarget,sign)
 	@echo + ld $@
 	$(V)$(LD) $(LDFLAGS) -N -T tools/boot.ld $^ -o $(call toobj,bootblock)
-	# 使用 -T 让连接器使用指定的脚本 在那里面使得地址为0x7C00
 	@$(OBJDUMP) -S $(call objfile,bootblock) > $(call asmfile,bootblock)
 	@$(OBJCOPY) -S -O binary $(call objfile,bootblock) $(call outfile,bootblock)
 	@$(call totarget,sign) $(call outfile,bootblock) $(bootblock)
@@ -194,10 +206,14 @@ $(call create_target,bootblock)
 # create 'sign' tools
 $(call add_files_host,tools/sign.c,sign,sign)
 $(call create_target_host,sign,sign)
+# mark: 创建sign根据为了检测BootLoader的合法性
 
 # -------------------------------------------------------------------
 
 # create ucore.img
+# 生成一个有10000个块的文件，每个块默认512字节，用0填充
+# 把bootblock中的内容写到第一个磁盘块
+# 从第二个块开始写kernel中的内容
 UCOREIMG	:= $(call totarget,ucore.img)
 
 $(UCOREIMG): $(kernel) $(bootblock) $(kernel_nopage)

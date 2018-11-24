@@ -23,7 +23,7 @@ start:
     movw %ax, %es                                   # -> Extra Segment
     movw %ax, %ss                                   # -> Stack Segment
 
-    #  Enable A20: for 32 address lines is available
+    # Enable A20: for 32 address lines is available
     #  For backwards compatibility with the earliest PCs, physical
     #  address line 20 is tied low, so that addresses higher than
     #  1MB wrap("回卷") around to zero by default. This code undoes this.

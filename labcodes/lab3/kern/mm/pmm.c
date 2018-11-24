@@ -210,7 +210,8 @@ page_init(void) {
     cprintf("e820map:\n");
     int i;
     for (i = 0; i < memmap->nr_map; i ++) {
-        uint64_t begin = memmap->map[i].addr, end = begin + memmap->map[i].size;
+        uint64_t begin = memmap->map[i].addr, 
+				 end = begin + memmap->map[i].size;
         cprintf("  memory: %08llx, [%08llx, %08llx], type = %d.\n",
                 memmap->map[i].size, begin, end - 1, memmap->map[i].type);
         if (memmap->map[i].type == E820_ARM) {
@@ -229,7 +230,7 @@ page_init(void) {
     pages = (struct Page *)ROUNDUP((void *)end, PGSIZE);	// 填充配置page frame的数据结构page
 
     for (i = 0; i < npage; i ++) {
-        SetPageReserved(+ + i);
+        SetPageReserved(pages + i);
     }	// set PG_reserved, 这种方式就把所有的内存空间先设置为内核使用，然后由init_memmap来完成对分配内存的配置
 		// 也就防止内核的数据结构所在区域不可以被访问。
 
@@ -380,18 +381,18 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     }
     return NULL;          // (8) return page table entry
 #endif
-	pde_t *pdep = &pgdir[PDX(la)];
-	if( !(*pdep & PTE_P) ){
-		struct Page *page = NULL;
-		if( (!create) || (page = alloc_page()) == NULL){
-			return NULL;
-		}
-		set_page_ref(page,1);
-		uintptr_t pa = page2pa(page);
-		memset(KADDR(pa), 0, PGSIZE);
-		*pdep = pa | PTE_U | PTE_W | PTE_P;
-	}
-	return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];		
+    pde_t *pdep = &pgdir[PDX(la)];
+    if (!(*pdep & PTE_P)) {
+        struct Page *page;
+        if (!create || (page = alloc_page()) == NULL) {
+            return NULL;
+        }
+        set_page_ref(page, 1);
+        uintptr_t pa = page2pa(page);
+        memset(KADDR(pa), 0, PGSIZE);
+        *pdep = pa | PTE_U | PTE_W | PTE_P;
+    }
+    return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
 	//根据pde中所存储的pte的地址以指针形式开始访问，并根据所给的虚拟地址进行index的确定
 	//使用KADDR的原因是因为现在的映射机制需要一个虚拟地址来进行访问，前面只是为了内存初始化需要pa地址
 }
@@ -439,15 +440,14 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
-	if( *ptep & PTE_P ){
-		struct Page *page = NULL;
-		page = pte2page(&ptep);
-		if( page_ref_dec(page) == 0){
-			free_page(page);
-		}
-		*ptep = 0;
-		tlb_invalidate(pgdir, la);
-	}
+    if (*ptep & PTE_P) {
+        struct Page *page = pte2page(*ptep);
+        if (page_ref_dec(page) == 0) {
+            free_page(page);
+        }
+        *ptep = 0;
+        tlb_invalidate(pgdir, la);
+    }
 }
 
 //page_remove - free an Page which is related linear address la and has an validated pte
