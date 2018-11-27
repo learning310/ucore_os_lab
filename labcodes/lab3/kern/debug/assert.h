@@ -11,6 +11,7 @@ void __noreturn __panic(const char *file, int line, const char *fmt, ...);
 
 #define panic(...)                                      \
     __panic(__FILE__, __LINE__, __VA_ARGS__)
+	//函数实体位于panic.c中
 
 #define assert(x)                                       \
     do {                                                \

@@ -70,6 +70,7 @@ vma_create(uintptr_t vm_start, uintptr_t vm_end, uint32_t vm_flags) {
 
 
 // find_vma - find a vma  (vma->vm_start <= addr <= vma_vm_end)
+// 优先查找mmap_cache,如果没有再去遍历mmap_list，这样做可以提高效率。
 struct vma_struct *
 find_vma(struct mm_struct *mm, uintptr_t addr) {
     struct vma_struct *vma = NULL;
@@ -107,6 +108,14 @@ check_vma_overlap(struct vma_struct *prev, struct vma_struct *next) {
 
 
 // insert_vma_struct -insert vma in mm's list link
+// 1.拿到mm_struct里面的控制指针mmap_list
+// 2.使用一个while循环来查看其是不是走到头或没有管理的虚拟内存(即默认初始化为本身)
+// 3.找到一个mm_struct所管理中的起始位置比所要求的起始地址要高的位置
+//  原因:如果我管理的虚拟内存中有一个vma比你的起始地址还高那你肯定下面
+// 4.检查内存重叠，包括低于我的和高于我的,分别检查其是否有重叠情况，若没有，则正常分配内存即可
+//   这一步很关键因为先前的动作并没有对start和end进行检查,在这里完成了
+// 5.将发出请求的vma内的list_link加入到mm_struct中的mmap_list
+// 6.更新mm->map_count
 void
 insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma) {
     assert(vma->vm_start < vma->vm_end);
@@ -307,7 +316,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     //try to find a vma which include addr
     struct vma_struct *vma = find_vma(mm, addr);
 
-    pgfault_num++;
+    pgfault_num++;	//只是为了统计使用？
     //If the addr is in the range of a mm's vma?
     if (vma == NULL || vma->vm_start > addr) {
         cprintf("not valid addr %x, and  can not find it in vma\n", addr);
@@ -332,6 +341,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
             goto failed;
         }
     }
+	
     /* IF (write an existed addr ) OR
      *    (write an non_existed addr && addr is writable) OR
      *    (read  an non_existed addr && addr is readable)
@@ -345,6 +355,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     addr = ROUNDDOWN(addr, PGSIZE);
 
     ret = -E_NO_MEM;
+	// 完成对待会PDT表项更新操作时权限位的确认
 
     pte_t *ptep=NULL;
     /*LAB3 EXERCISE 1: YOUR CODE
@@ -364,6 +375,38 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *   mm->pgdir : the PDT of these vma
     *
     */
+	if( (ptep = get_pte(mm->pgdir, addr, 1)) == NULL){
+		cprintf("get_pte in do_pgfault failed.\n");
+		goto failed;
+	}
+	if(*ptep == 0){	
+	// answer:if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
+	// question:为什么这里boot_map_segment已经完成了页表的配置，什么情况下会出现没有对应的物理地址
+	// thinking:可能由于这里的虚拟地址的mm->pgdir所对应的页根本不存在
+	//			1.即超出KERNBASE + KMEMSIZE这个范围
+	//			2.或者说也不再磁盘中
+		if( pgdir_alloc_page(mm->pgdir, addr, perm) == NULL){
+			cprintf("pgdir_alloc_page in do_pgfault is failed\n");
+			goto failed;
+		}
+	}else{
+	// pte表项存在，说明存在映射关系，即由于其在磁盘中但并不在内存中。
+	// 则换入到内存中和将换入的内存页地址更新到我们的addr所对应的pte中
+		if(swap_init_ok){
+			struct Page *page = NULL;
+			if( (ret = swap_in(mm, addr, &page)) != 0 ){	//0 is a falg
+				cprintf("swap_in in do_pgfault is failed\n");
+				goto failed;
+			}
+			page_insert(mm->pgdir, page, addr, perm);
+			swap_map_swappable(mm, addr,  page, ret);
+			page->pra_vaddr = addr;	//为了置换算法服务
+		}
+		else {
+			cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+			goto failed;
+		}
+	}
 #if 0
     /*LAB3 EXERCISE 1: YOUR CODE*/
     ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
@@ -396,6 +439,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         }
    }
 #endif
+   
    ret = 0;
 failed:
     return ret;

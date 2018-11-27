@@ -215,14 +215,16 @@ page_init(void) {
 
     npage = maxpa / PGSIZE;
     pages = (struct Page *)ROUNDUP((void *)end, PGSIZE);	// 填充配置page frame的数据结构page
-
+	
     for (i = 0; i < npage; i ++) {
         SetPageReserved(pages + i);
-    }	// set PG_reserved, 这种方式就把所有的内存空间先设置为内核使用，然后由init_memmap来完成对分配内存的配置
-		// 也就防止内核的数据结构所在区域不可以被访问。
+    }	
+	// set PG_reserved, 这种方式就把所有的内存空间先设置为内核使用，然后由init_memmap来完成对分配内存的配置
+	// 也就防止内核的数据结构所在区域不可以被访问。
+	// 这里存在内存浪费情况，即因为pages~freemem根本不需要page来管理？可能是为了安全。(实验测试通过)
 
-    uintptr_t freemem = PADDR((uintptr_t)pages + sizeof(struct Page) * npage);	// 初始化freemem
-
+	uintptr_t freemem = PADDR((uintptr_t)pages + sizeof(struct Page) * npage);	// 初始化freemem0x1bad80
+	
     for (i = 0; i < memmap->nr_map; i ++) {
         uint64_t begin = memmap->map[i].addr, end = begin + memmap->map[i].size;
         if (memmap->map[i].type == E820_ARM) {
@@ -239,10 +241,25 @@ page_init(void) {
                     init_memmap(pa2page(begin), (end - begin) / PGSIZE);
 					// init_memmap:在这里完成Page结构中的flags和引用计数ref清零，并加到free_area.free_list指向的双向列表
 					// pa2page:将begin地址对应的那个page的数据结构的地址得出作为参数传递至init_memmap
+					// pa2page转到了pages中管理改地址的地址
+					
+					// cprintf("begin=%llx,end=%llx\n", begin, end);
+					// 根据测试结果，其实由于它的起始地址为0x11b000(pa),end为0x7fe0000,大小为32293页
+					// 故可以依据entry.s中建立的对低地址的4MB的页目录表和页表可以完成init_memmap的工作
+					// 其实际的物理空间只有126MB空间没有KMEMSIZE那么大
+					// 我认为存在取巧的问题，万一begin是高于4MB的范围的话就出现问题了
                 }
             }
         }
     }
+	{
+		/*
+		cprintf("----test before----\n");
+		cprintf("pgaes=%p, freemem=%p\n", pages, freemem);
+		cprintf("npage=%d, end=%p\n", npage, *end);
+		cprintf("----test end-------\n");
+		*/
+	}
 }
 
 //boot_map_segment - setup&enable the paging mechanism
@@ -264,6 +281,7 @@ boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, uintptr_t pa, uint32_t
         assert(ptep != NULL);
         *ptep = pa | PTE_P | perm;
     }
+	
 }
 
 //boot_alloc_page - allocate one page using pmm->alloc_pages(1) 
@@ -284,7 +302,21 @@ void
 pmm_init(void) {
     // We've already enabled paging
     boot_cr3 = PADDR(boot_pgdir);
-
+	
+	/*{
+		// test fist pte
+		pte_t *mptep = 0xc0119020;
+		int i;
+		for(i=-8; i<10; i++){
+			cprintf("mptep entry is %p\n", mptep[i]);
+		}
+		//test boot_pgdir
+		for(i=0; i<10; i++){
+			cprintf("boot_pgdir %d entry is %p\n", i, *(&boot_pgdir[i]) );
+		}
+		cprintf("boot_pgdir %d entry is %p\n", 768, *(&boot_pgdir[768]) );
+	}*/
+	
     //We need to alloc/free the physical memory (granularity is 4KB or other size). 
     //So a framework of physical memory manager (struct pmm_manager)is defined in pmm.h
     //First we should init a physical memory manager(pmm) based on the framework.
@@ -310,7 +342,7 @@ pmm_init(void) {
     // map all physical memory to linear memory with base linear addr KERNBASE
     // linear_addr KERNBASE ~ KERNBASE + KMEMSIZE = phy_addr 0 ~ KMEMSIZE
     boot_map_segment(boot_pgdir, KERNBASE, KMEMSIZE, 0, PTE_W);
-
+	
     // Since we are using bootloader's GDT,
     // we should reload gdt (second time, the last time) to get user segments and the TSS
     // map virtual_addr 0 ~ 4G = linear_addr 0 ~ 4G
@@ -321,7 +353,7 @@ pmm_init(void) {
     //now the basic virtual memory map(see memalyout.h) is established.
     //check the correctness of the basic virtual memory map.
     check_boot_pgdir();
-
+	
     print_pgdir();
 
 }
@@ -378,6 +410,8 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
         uintptr_t pa = page2pa(page);
         memset(KADDR(pa), 0, PGSIZE);
         *pdep = pa | PTE_U | PTE_W | PTE_P;
+		//test boot_pgdir
+		//cprintf("boot_pgdir entry is %p\n", pdep);
     }
     return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
 	//根据pde中所存储的pte的地址以指针形式开始访问，并根据所给的虚拟地址进行index的确定
