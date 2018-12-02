@@ -256,12 +256,12 @@ check_pgfault(void) {
     pde_t *pgdir = mm->pgdir = boot_pgdir;
     assert(pgdir[0] == 0);
 
-    struct vma_struct *vma = vma_create(0, PTSIZE, VM_WRITE);
+    struct vma_struct *vma = vma_create(0, PTSIZE, VM_WRITE);	//确认写的权限
     assert(vma != NULL);
 
     insert_vma_struct(mm, vma);
 
-    uintptr_t addr = 0x100;
+    uintptr_t addr = 0x100;		//boot_map中没有对低于kernbase以下的内存做gdt表项的填写，故触发缺页
     assert(find_vma(mm, addr) == vma);
 
     int i, sum = 0;
@@ -383,8 +383,8 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
 	// answer:if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
 	// question:为什么这里boot_map_segment已经完成了页表的配置，什么情况下会出现没有对应的物理地址
 	// thinking:可能由于这里的虚拟地址的mm->pgdir所对应的页根本不存在
-	//			1.即超出KERNBASE + KMEMSIZE这个范围
-	//			2.或者说也不再磁盘中
+	//			1.不在KERNBASE ~ ERNBASE+KMEMSIZE这个映射范围
+	//			2.同时也不再磁盘中
 		if( pgdir_alloc_page(mm->pgdir, addr, perm) == NULL){
 			cprintf("pgdir_alloc_page in do_pgfault is failed\n");
 			goto failed;
@@ -444,4 +444,15 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
 failed:
     return ret;
 }
-
+/*
+* my thinking:
+* 1.首先判断权限，确认页访问异常引起的原因，打印信息。如果出现以下3种情况则继续处理：
+*	a)写一个内存存在的页,那说明在磁盘;
+*	b)写一个不存在的页且权限为可写;
+*	c)读一个不存在的页且这一页可以读;
+* 2.先根据mm->pgdir取获取pde的表项,
+* 	a)若pde存在,则说明这一页则存在只是在磁盘区
+*	  那么调用swap_in()，将磁盘页的内容换入至内存中，然后将该页插入mm->pgdir管理中，同时swap_map_swappable。。。
+*	b)若pde不存在,那么说明这一页没有映射关系，即pdt为空,而get_pte()函数会根据mm->pgdir填写pde,同时申请了一个页表,then
+*	 调用pgdir_alloc_page函数,他会根据所给定的地址和pdt建立对应的映射关系，即根据权限位填写pte表项，完成地址映射。
+*/

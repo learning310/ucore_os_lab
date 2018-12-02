@@ -38,7 +38,7 @@ kern_init(void) {
 
     vmm_init();                 // init virtual memory management
 
-    ide_init();                 // init ide devices
+    ide_init();                 // init ide devices(Integrated Drive Electronics)
     swap_init();                // init swap
 
     clock_init();               // init clock interrupt
@@ -46,7 +46,7 @@ kern_init(void) {
 
     //LAB1: CAHLLENGE 1 If you try to do it, uncomment(取消注释) lab1_switch_test()
     // user/kernel mode switch test
-    lab1_switch_test();
+    // lab1_switch_test();
 
     /* do nothing */
     while (1);

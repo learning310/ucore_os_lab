@@ -219,6 +219,9 @@ page_init(void) {
     for (i = 0; i < npage; i ++) {
         SetPageReserved(pages + i);
     }	
+	// test
+	// cprintf("pages+i=%p\n", (pages+i-1)->flags);
+	
 	// set PG_reserved, 这种方式就把所有的内存空间先设置为内核使用，然后由init_memmap来完成对分配内存的配置
 	// 也就防止内核的数据结构所在区域不可以被访问。
 	// 这里存在内存浪费情况，即因为pages~freemem根本不需要page来管理？可能是为了安全。(实验测试通过)
@@ -243,6 +246,7 @@ page_init(void) {
 					// pa2page:将begin地址对应的那个page的数据结构的地址得出作为参数传递至init_memmap
 					// pa2page转到了pages中管理改地址的地址
 					
+					// cprintf("pa2page(begin) = %p\n", pa2page(begin));
 					// cprintf("begin=%llx,end=%llx\n", begin, end);
 					// 根据测试结果，其实由于它的起始地址为0x11b000(pa),end为0x7fe0000,大小为32293页
 					// 故可以依据entry.s中建立的对低地址的4MB的页目录表和页表可以完成init_memmap的工作

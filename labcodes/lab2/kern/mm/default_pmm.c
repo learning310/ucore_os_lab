@@ -117,7 +117,7 @@ default_init_memmap(struct Page *base, size_t n) {
     struct Page *p = base;
     for (; p != base + n; p ++) {
 		assert(PageReserved(p));		// 判断PG_reserved这个比特位是否被设置,因为在调用它的位置已经SetPageReserved
-        p->flags = p->property = 0;
+		p->flags = p->property = 0;
         set_page_ref(p, 0);
     }
     base->property = n;
@@ -128,7 +128,7 @@ default_init_memmap(struct Page *base, size_t n) {
 	// list_add -> list_add_after -> 插在链表的头部位置
 	
 	// test
-	//cprintf("n=%d, nr_free=%d,base=%p\n", n, nr_free, *base);
+	// cprintf("n=%d, nr_free=%d,base=%p\n", n, nr_free, base);
 }
 /*
 * My thinking:

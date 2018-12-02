@@ -13,6 +13,7 @@
  * --------------------------------------------
  *           24 bits            7 bits    1 bit
  * */
+// offest store the begin of this page in disk sector 即存储了该页在硬盘上的扇区位置
 
 #define MAX_SWAP_OFFSET_LIMIT                   (1 << 24)
 

@@ -58,7 +58,7 @@ idt_init(void) {
     // Above statement is for user it have privilege transform.
 	// SETGATE(idt[T_SWITCH_TOU], 1, USER_CS, __vectors[T_SWITCH_TOU], DPL_KERNEL);
 	
-	// load the IDT. It include a base address and a limit��
+	// load the IDT. It include a base address and a limit size
 	lidt(&idt_pd);	// IDTR regsister	
 }
 

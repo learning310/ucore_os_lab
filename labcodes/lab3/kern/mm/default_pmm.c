@@ -2,6 +2,7 @@
 #include <list.h>
 #include <string.h>
 #include <default_pmm.h>
+#include <stdio.h>
 
 /*  In the First Fit algorithm, the allocator keeps a list of free blocks
  * (known as the free list). Once receiving a allocation request for memory,
@@ -120,11 +121,14 @@ default_init_memmap(struct Page *base, size_t n) {
         set_page_ref(p, 0);
     }
     base->property = n;
-    SetPageProperty(base);	// 设置可以被事情为内存
+    SetPageProperty(base);	// 设置为可以被使用的内存
     nr_free += n;
     list_add_before(&free_list, &(base->page_link));
 	// list_add_before -> 插在链尾的位置
 	// list_add -> list_add_after -> 插在链表的头部位置
+	
+	// test
+	// cprintf("n=%d, nr_free=%d,base=%p\n", n, nr_free, base);
 }
 /*
 * My thinking:
