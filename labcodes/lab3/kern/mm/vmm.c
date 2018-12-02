@@ -375,38 +375,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *   mm->pgdir : the PDT of these vma
     *
     */
-	if( (ptep = get_pte(mm->pgdir, addr, 1)) == NULL){
-		cprintf("get_pte in do_pgfault failed.\n");
-		goto failed;
-	}
-	if(*ptep == 0){	
-	// answer:if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
-	// question:为什么这里boot_map_segment已经完成了页表的配置，什么情况下会出现没有对应的物理地址
-	// thinking:可能由于这里的虚拟地址的mm->pgdir所对应的页根本不存在
-	//			1.不在KERNBASE ~ ERNBASE+KMEMSIZE这个映射范围
-	//			2.同时也不再磁盘中
-		if( pgdir_alloc_page(mm->pgdir, addr, perm) == NULL){
-			cprintf("pgdir_alloc_page in do_pgfault is failed\n");
-			goto failed;
-		}
-	}else{
-	// pte表项存在，说明存在映射关系，即由于其在磁盘中但并不在内存中。
-	// 则换入到内存中和将换入的内存页地址更新到我们的addr所对应的pte中
-		if(swap_init_ok){
-			struct Page *page = NULL;
-			if( (ret = swap_in(mm, addr, &page)) != 0 ){	//0 is a falg
-				cprintf("swap_in in do_pgfault is failed\n");
-				goto failed;
-			}
-			page_insert(mm->pgdir, page, addr, perm);
-			swap_map_swappable(mm, addr,  page, ret);
-			page->pra_vaddr = addr;	//为了置换算法服务
-		}
-		else {
-			cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
-			goto failed;
-		}
-	}
+	
 #if 0
     /*LAB3 EXERCISE 1: YOUR CODE*/
     ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
@@ -439,6 +408,39 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         }
    }
 #endif
+   
+   if( (ptep = get_pte(mm->pgdir, addr, 1)) == NULL){
+	   cprintf("get_pte in do_pgfault failed.\n");
+	   goto failed;
+   }
+   if(*ptep == 0){	
+	   // answer:if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
+	   // question:为什么这里boot_map_segment已经完成了页表的配置，什么情况下会出现没有对应的物理地址
+	   // thinking:可能由于这里的虚拟地址的mm->pgdir所对应的页根本不存在
+	   //			1.不在KERNBASE ~ ERNBASE+KMEMSIZE这个映射范围
+	   //			2.同时也不再磁盘中
+	   if( pgdir_alloc_page(mm->pgdir, addr, perm) == NULL){
+		   cprintf("pgdir_alloc_page in do_pgfault is failed\n");
+		   goto failed;
+	   }
+   }else{
+	   // pte表项存在，说明存在映射关系，即由于其在磁盘中但并不在内存中。
+	   // 则换入到内存中和将换入的内存页地址更新到我们的addr所对应的pte中
+	   if(swap_init_ok){
+		   struct Page *page = NULL;
+		   if( (ret = swap_in(mm, addr, &page)) != 0 ){	//0 is a falg
+			   cprintf("swap_in in do_pgfault is failed\n");
+			   goto failed;
+		   }
+		   page_insert(mm->pgdir, page, addr, perm);
+		   swap_map_swappable(mm, addr,  page, ret);	//将这一页链接至swap的链表中
+		   page->pra_vaddr = addr;	// 记录物理页对应的虚拟页的起始地址
+	   }
+	   else {
+		   cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+		   goto failed;
+	   }
+   }
    
    ret = 0;
 failed:
