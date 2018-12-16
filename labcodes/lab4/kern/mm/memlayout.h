@@ -10,7 +10,7 @@
 #define SEG_UDATA   4
 #define SEG_TSS     5
 
-/* global descrptor numbers */
+/* global descriptor numbers */
 #define GD_KTEXT    ((SEG_KTEXT) << 3)      // kernel text
 #define GD_KDATA    ((SEG_KDATA) << 3)      // kernel data
 #define GD_UTEXT    ((SEG_UTEXT) << 3)      // user text
@@ -34,12 +34,12 @@
  *                            |         Empty Memory (*)        |
  *                            |                                 |
  *                            +---------------------------------+ 0xFB000000
- *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE
+ *                            |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE(4MB)
  *     VPT -----------------> +---------------------------------+ 0xFAC00000
  *                            |        Invalid Memory (*)       | --/--
  *     KERNTOP -------------> +---------------------------------+ 0xF8000000
  *                            |                                 |
- *                            |    Remapped Physical Memory     | RW/-- KMEMSIZE
+ *                            |    Remapped Physical Memory     | RW/-- KMEMSIZE(896MB)
  *                            |                                 |
  *     KERNBASE ------------> +---------------------------------+ 0xC0000000
  *                            |                                 |
@@ -50,6 +50,11 @@
  *     "Empty Memory" is normally unmapped, but user programs may map pages
  *     there if desired.
  *
+ * (*) Mark:我的PTSIZE推理过程
+ *		根据实际内存的大小 即896MB映射内存 -> 229,376个内存页 ---->
+ *	   	-> page table(10 bits) 所占空间为：896KB 即224个内存页
+ *		-> page directory(10 bits) 224项  由于内存管理基于页，故所占内存为4KB 1页
+ *
  * */
 
 /* All physical memory mapped at this address */
@@ -59,9 +64,9 @@
 
 /* *
  * Virtual page table. Entry PDX[VPT] in the PD (Page Directory) contains
- * a pointer to the page directory itself, thereby turning the PD into a page
+ * a pointer to the page directory itself, thereby(从而) turning the PD into a page
  * table, which maps all the PTEs (Page Table Entry) containing the page mappings
- * for the entire virtual address space into that 4 Meg region starting at VPT.
+ * for the entire virtual address space into that 4 MB region starting at VPT.
  * */
 #define VPT                 0xFAC00000
 
@@ -104,6 +109,7 @@ struct Page {
     list_entry_t page_link;         // free list link
     list_entry_t pra_page_link;     // used for pra (page replace algorithm)
     uintptr_t pra_vaddr;            // used for pra (page replace algorithm)
+	// 记录此物理页对应的虚拟页起始地址
 };
 
 /* Flags describing the status of a page frame */
@@ -126,7 +132,6 @@ typedef struct {
     list_entry_t free_list;         // the list header
     unsigned int nr_free;           // # of free pages in this free list
 } free_area_t;
-
 
 #endif /* !__ASSEMBLER__ */
 
