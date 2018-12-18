@@ -111,6 +111,7 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
                     cprintf("swap_out: i %d, store page in vaddr 0x%x to disk swap entry %d\n", i, v, page->pra_vaddr/PGSIZE+1);
                     *ptep = (page->pra_vaddr/PGSIZE+1)<<8;
                     free_page(page);
+					// 感觉像swapfs_write函数将磁盘号的那24位写入到了pra_vaddr？
           }
           
           tlb_invalidate(mm->pgdir, v);
@@ -184,7 +185,7 @@ check_swap(void)
      list_entry_t *le = &free_list;
      while ((le = list_next(le)) != &free_list) {
         struct Page *p = le2page(le, page_link);
-        assert(PageProperty(p));
+        assert(PageProperty(p));	//已经被填入管理的也得个数，不同于内核页的set
         count ++, total += p->property;
      }
      assert(total == nr_free_pages());

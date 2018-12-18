@@ -54,7 +54,20 @@ struct proc_struct {
     char name[PROC_NAME_LEN + 1];               // Process name
     list_entry_t list_link;                     // Process link list 
     list_entry_t hash_link;                     // Process hash list
+	//为了解决线程过多时链表的太过复杂，故采用哈希链表提高搜索速度(以pid为依据)
 };
+/* 	PCB/TCB 数据结构解析
+*	1)身份信息 pid、name
+*	2)和调度相关的控制信息 state、runs、need_resched、flags
+*	3)内存管理相关信息 kstack、cr3、mm
+*	4)线、进程切换 tf、context
+*	4)链表 parent、list_link、hash_link
+*	kstack作用解析：
+*	当内核准备从一个进程切换到另一个的时候,需要根据kstack的值正确的设置好tss,以便在进程切换以后再发生中断时能够使用正确的栈。
+*	内核栈位于内核地址空间，并且是不共享的(每个线程都有自己的内核栈)，不收到mm的管理，当进程退出的时候，内核能够根据kstack的值迅速定位栈的位置并进行回收。
+*	这样使得内核对栈的溢出不敏感，一旦发生溢出他可能污染到内核中其他的数据使得内核崩溃。
+*	如果通过页表来将所有进程的内核栈映射到固定的地址上去，能够避免。但是会使得进程切换时对栈的修改繁琐。
+*/
 
 #define le2proc(le, member)         \
     to_struct((le), struct proc_struct, member)

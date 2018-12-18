@@ -40,13 +40,13 @@ kern_init(void) {
     vmm_init();                 // init virtual memory management
     proc_init();                // init process table
     
-    ide_init();                 // init ide devices
+    ide_init();                 // init ide devices(Integrated Drive Electronics)
     swap_init();                // init swap
 
     clock_init();               // init clock interrupt
     intr_enable();              // enable irq interrupt
 
-    //LAB1: CAHLLENGE 1 If you try to do it, uncomment lab1_switch_test()
+    //LAB1: CAHLLENGE 1 If you try to do it, uncomment(取消注释) lab1_switch_test()
     // user/kernel mode switch test
     //lab1_switch_test();
     
@@ -94,11 +94,24 @@ lab1_print_cur_status(void) {
 static void
 lab1_switch_to_user(void) {
     //LAB1 CHALLENGE 1 : TODO
+	asm volatile (
+	    "sub $0x8, %%esp \n"	// 这里的归回栈空间由iret来做
+	    "int %0 \n"
+	    "movl %%ebp, %%esp"     // can cancel this statement in answer
+	    : 
+	    : "i"(T_SWITCH_TOU)
+	);
 }
 
 static void
 lab1_switch_to_kernel(void) {
     //LAB1 CHALLENGE 1 :  TODO
+	asm volatile (
+	    "int %0 \n"
+	    "movl %%ebp, %%esp \n"
+	    : 
+	    : "i"(T_SWITCH_TOK)
+	);
 }
 
 static void

@@ -2,6 +2,7 @@
 #include <list.h>
 #include <string.h>
 #include <default_pmm.h>
+#include <stdio.h>
 
 /*  In the First Fit algorithm, the allocator keeps a list of free blocks
  * (known as the free list). Once receiving a allocation request for memory,
@@ -104,45 +105,65 @@ default_init(void) {
     nr_free = 0;
 }
 
+/*
+* my thinking:
+* 1.使用free_area和各个内存块的page_link，完成了对全部内存的管理
+*	1.1 free_area完成了对内存块中头一个的起始地址记录，和空闲页的个数记录
+*	1.2 page_link是内存块第一个page数据结构，它完成对改内存块信息的描述，并完成链接到free_area上
+*/
 static void
 default_init_memmap(struct Page *base, size_t n) {
-    assert(n > 0);
+    assert(n > 0);		// for efficient, we need to judge n for the first
     struct Page *p = base;
     for (; p != base + n; p ++) {
-        assert(PageReserved(p));
+        assert(PageReserved(p));		// 判断PG_reserved这个比特位是否被设置,因为在调用它的位置已经SetPageReserved
         p->flags = p->property = 0;
         set_page_ref(p, 0);
     }
     base->property = n;
-    SetPageProperty(base);
+    SetPageProperty(base);	// 设置为可以被使用的内存
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    list_add_before(&free_list, &(base->page_link));
+	// list_add_before -> 插在链尾的位置
+	// list_add -> list_add_after -> 插在链表的头部位置
+	
+	// test
+	// cprintf("n=%d, nr_free=%d,base=%p\n", n, nr_free, base);
 }
-
+/*
+* My thinking:
+* 1.先判断是否访问合法
+* 2.找到符合要求的内存块
+* 3.更改找到的那个内存块的属性信息，即改内存的控制的页结构，也就是第一个在内存块的页结构
+*/
 static struct Page *
 default_alloc_pages(size_t n) {
     assert(n > 0);
     if (n > nr_free) {
         return NULL;
     }
+	// 上面的是为了效率，都是先排除肯定存在错误的情况
     struct Page *page = NULL;
     list_entry_t *le = &free_list;
+    // TODO: optimize (next-fit)
     while ((le = list_next(le)) != &free_list) {
-        struct Page *p = le2page(le, page_link);
+        struct Page *p = le2page(le, page_link);	//结构指针转换 list_entry* -> page*
         if (p->property >= n) {
             page = p;
             break;
         }
     }
+	// 采用的方法是释放的内存空间是内存块的头，需要更新双向链表及page结构的信息。
     if (page != NULL) {
-        list_del(&(page->page_link));
         if (page->property > n) {
             struct Page *p = page + n;
             p->property = page->property - n;
-            list_add(&free_list, &(p->page_link));
+            SetPageProperty(p);
+            list_add_after(&free_list, &(p->page_link));	// 到这里，完成了内存块的信息更新
     }
+        list_del(&(page->page_link));
         nr_free -= n;
-        ClearPageProperty(page);
+		ClearPageProperty(page);	//设置其不可以被再次申请
     }
     return page;
 }
@@ -152,16 +173,17 @@ default_free_pages(struct Page *base, size_t n) {
     assert(n > 0);
     struct Page *p = base;
     for (; p != base + n; p ++) {
-        assert(!PageReserved(p) && !PageProperty(p));
+        assert(!PageReserved(p) && !PageProperty(p));	//判断是不是留给内核的，还有是不是被申请的内存
         p->flags = 0;
         set_page_ref(p, 0);
     }
     base->property = n;
     SetPageProperty(base);
+	// 清空使用的信息，并配置新的信息
     list_entry_t *le = list_next(&free_list);
     while (le != &free_list) {
         p = le2page(le, page_link);
-        le = list_next(le);
+        le = list_next(le);		// 两个指针分别跑
         if (base + base->property == p) {
             base->property += p->property;
             ClearPageProperty(p);
@@ -174,8 +196,21 @@ default_free_pages(struct Page *base, size_t n) {
             list_del(&(p->page_link));
         }
     }
+	// 合并内存，两种可能，一头一尾，或者说一前一后。
+	// 完成的工作就是找到原来的那个内存块，先清空原来的page数据结构的信息，并且将那个小的原本的page_link从内存中取下来
+    // 下面新的内存管理列表进行检查，即有的内存块是不是已经没有内存（全部被分配），只有那个控制的page结构了
+	// 判断无误之后加入到双向列表中去
+    le = list_next(&free_list);
+    while (le != &free_list) {
+        p = le2page(le, page_link);
+        if (base + base->property <= p) {
+            assert(base + base->property != p);	//assert 如果参数是真则正常，如果为假则触发panic
+            break;
+        }
+        le = list_next(le);
+    }
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    list_add_before(&free_list, &(base->page_link));
 }
 
 static size_t
@@ -299,13 +334,15 @@ default_check(void) {
     assert(total == 0);
 }
 
+// mark: IMPORTANT
+// pmm_manager中完成了一个函数指针的结构体，这里相当于一个包装，将pmm_manager中对应的函数实现链接起来
+// 这种做法就是在面向对象->采用了类似C++的接口（interface）概念->接口在C语言中也就是一组函数指针的集合
 const struct pmm_manager default_pmm_manager = {
     .name = "default_pmm_manager",
     .init = default_init,
-    .init_memmap = default_init_memmap,
+    .init_memmap = default_init_memmap,		//这里的赋值应该是指针之间的赋值，即函数入口地址到成员的函数指针
     .alloc_pages = default_alloc_pages,
     .free_pages = default_free_pages,
     .nr_free_pages = default_nr_free_pages,
     .check = default_check,
 };
-

@@ -74,6 +74,7 @@ vma_create(uintptr_t vm_start, uintptr_t vm_end, uint32_t vm_flags) {
 
 
 // find_vma - find a vma  (vma->vm_start <= addr <= vma_vm_end)
+// 优先查找mmap_cache,如果没有再去遍历mmap_list，这样做可以提高效率。
 struct vma_struct *
 find_vma(struct mm_struct *mm, uintptr_t addr) {
     struct vma_struct *vma = NULL;
@@ -111,6 +112,14 @@ check_vma_overlap(struct vma_struct *prev, struct vma_struct *next) {
 
 
 // insert_vma_struct -insert vma in mm's list link
+// 1.拿到mm_struct里面的控制指针mmap_list
+// 2.使用一个while循环来查看其是不是走到头或没有管理的虚拟内存(即默认初始化为本身)
+// 3.找到一个mm_struct所管理中的起始位置比所要求的起始地址要高的位置
+//  原因:如果我管理的虚拟内存中有一个vma比你的起始地址还高那你肯定下面
+// 4.检查内存重叠，包括低于我的和高于我的,分别检查其是否有重叠情况，若没有，则正常分配内存即可
+//   这一步很关键因为先前的动作并没有对start和end进行检查,在这里完成了
+// 5.将发出请求的vma内的list_link加入到mm_struct中的mmap_list
+// 6.更新mm->map_count
 void
 insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma) {
     assert(vma->vm_start < vma->vm_end);
@@ -334,12 +343,12 @@ check_pgfault(void) {
     pde_t *pgdir = mm->pgdir = boot_pgdir;
     assert(pgdir[0] == 0);
 
-    struct vma_struct *vma = vma_create(0, PTSIZE, VM_WRITE);
+    struct vma_struct *vma = vma_create(0, PTSIZE, VM_WRITE);	//确认写的权限
     assert(vma != NULL);
 
     insert_vma_struct(mm, vma);
 
-    uintptr_t addr = 0x100;
+    uintptr_t addr = 0x100;		//boot_map中没有对低于kernbase以下的内存做gdt表项的填写，故触发缺页
     assert(find_vma(mm, addr) == vma);
 
     int i, sum = 0;
@@ -432,6 +441,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     addr = ROUNDDOWN(addr, PGSIZE);
 
     ret = -E_NO_MEM;
+	// 完成对待会PDT表项更新操作时权限位的确认
 
     pte_t *ptep=NULL;
     /*LAB3 EXERCISE 1: YOUR CODE
@@ -493,10 +503,56 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         }
    }
 #endif
+   
+   if( (ptep = get_pte(mm->pgdir, addr, 1)) == NULL){
+	   cprintf("get_pte in do_pgfault failed.\n");
+	   goto failed;
+   }
+   if(*ptep == 0){	
+	   // answer:if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
+	   // question:为什么这里boot_map_segment已经完成了页表的配置，什么情况下会出现没有对应的物理地址
+	   // thinking:可能由于这里的虚拟地址的mm->pgdir所对应的页根本不存在
+	   //			1.不在KERNBASE ~ ERNBASE+KMEMSIZE这个映射范围
+	   //			2.同时也不再磁盘中
+	   if( pgdir_alloc_page(mm->pgdir, addr, perm) == NULL){
+		   cprintf("pgdir_alloc_page in do_pgfault is failed\n");
+		   goto failed;
+	   }
+   }else{
+	   // pte表项存在，说明存在映射关系，即由于其在磁盘中但并不在内存中。
+	   // 则换入到内存中和将换入的内存页地址更新到我们的addr所对应的pte中
+	   if(swap_init_ok){
+		   struct Page *page = NULL;
+		   if( (ret = swap_in(mm, addr, &page)) != 0 ){	//0 is a falg
+			   cprintf("swap_in in do_pgfault is failed\n");
+			   goto failed;
+		   }
+		   page_insert(mm->pgdir, page, addr, perm);
+		   swap_map_swappable(mm, addr,  page, ret);	//将这一页链接至swap的链表中
+		   page->pra_vaddr = addr;	// 记录物理页对应的虚拟页的起始地址
+	   }
+	   else {
+		   cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+		   goto failed;
+	   }
+   }
+	
    ret = 0;
 failed:
     return ret;
 }
+/*
+* (lab3)my thinking:
+* 1.首先判断权限，确认页访问异常引起的原因，打印信息。如果出现以下3种情况则继续处理：
+*	a)写一个内存存在的页,那说明在磁盘;
+*	b)写一个不存在的页且权限为可写;
+*	c)读一个不存在的页且这一页可以读;
+* 2.先根据mm->pgdir取获取pde的表项,
+* 	a)若pde存在,则说明这一页则存在只是在磁盘区
+*	  那么调用swap_in()，将磁盘页的内容换入至内存中，然后将该页插入mm->pgdir管理中，同时swap_map_swappable。。。
+*	b)若pde不存在,那么说明这一页没有映射关系，即pdt为空,而get_pte()函数会根据mm->pgdir填写pde,同时申请了一个页表,then
+*	 调用pgdir_alloc_page函数,他会根据所给定的地址和pdt建立对应的映射关系，即根据权限位填写pte表项，完成地址映射。
+*/
 
 bool
 user_mem_check(struct mm_struct *mm, uintptr_t addr, size_t len, bool write) {

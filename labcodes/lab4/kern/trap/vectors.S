@@ -1,5 +1,6 @@
 # handler
 # __vectors[] is in kern/trap/vector.S which is produced by tools/vector.c
+# 对于没有error code的中断，ISR会压入0作为error code；如果中断有error code，这里就不会压入0
 .text
 .globl __alltraps
 .globl vector0

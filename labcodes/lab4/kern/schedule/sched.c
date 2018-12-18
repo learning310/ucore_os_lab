@@ -28,6 +28,7 @@ schedule(void) {
                 }
             }
         } while (le != last);
+		
         if (next == NULL || next->state != PROC_RUNNABLE) {
             next = idleproc;
         }

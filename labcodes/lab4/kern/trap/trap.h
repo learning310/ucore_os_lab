@@ -59,6 +59,7 @@ struct pushregs {
     uint32_t reg_eax;
 };
 
+// 声明顺序与原本的trapentry.s中完全是倒过来的
 struct trapframe {
     // padding:填充
     struct pushregs tf_regs;    // 由汇编指令pushal完成

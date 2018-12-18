@@ -11,6 +11,7 @@ __alltraps:
     pushl %fs
     pushl %gs
     pushal
+    #pushal: Push EAX, ECX, EDX, EBX, original ESP, EBP, ESI, and EDI
 
     # load GD_KDATA into %ds and %es to set up data segments for kernel
     movl $GD_KDATA, %eax
@@ -24,6 +25,7 @@ __alltraps:
     call trap
 
     # pop the pushed stack pointer
+	# mark: 这句话给建立临时的trapframe解决缺失由于中断引发的缺失ss和esp而提供了可能
     popl %esp
 
     # return falls through to trapret...
@@ -38,12 +40,12 @@ __trapret:
     popl %es
     popl %ds
 
-    # get rid of the trap number and error code
+    # get rid of the trap number and error code 因为在vector.s中有将trap number压入栈中的动作，所以需要释放。
     addl $0x8, %esp
     iret
 
 .globl forkrets
 forkrets:
     # set stack to this new process's trapframe
-    movl 4(%esp), %esp
+    movl 4(%esp), %esp	#把esp指向当前进程的中断帧,这样就可以利用pcb中的tf填入的内容跳转至proc->tf中eip填入的地址
     jmp __trapret

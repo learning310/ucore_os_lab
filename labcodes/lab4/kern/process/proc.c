@@ -102,6 +102,18 @@ alloc_proc(void) {
      *       uint32_t flags;                             // Process flag
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
+		proc->state = PROC_UNINIT;
+		proc->pid = -1;
+		proc->runs = 0;
+		proc->kstack = 0;
+		proc->need_resched = 0;
+		proc->parent = NULL;
+		proc->mm = NULL;
+		memset(&(proc->context), 0, sizeof(struct context));
+		proc->tf = NULL;
+		proc->cr3 = boot_cr3;
+		proc->flags = 0;
+		memset(proc->name, 0, PROC_NAME_LEN);	// 我认为没必要因为set_proc_name会再做一次
     }
     return proc;
 }
@@ -167,6 +179,7 @@ proc_run(struct proc_struct *proc) {
         {
             current = proc;
             load_esp0(next->kstack + KSTACKSIZE);
+			// 为了能够在发生特权级切换时task state中esp0(也就是ring0时esp的值)正确
             lcr3(next->cr3);
             switch_to(&(prev->context), &(next->context));
         }
@@ -248,14 +261,14 @@ copy_mm(uint32_t clone_flags, struct proc_struct *proc) {
 //             - setup the kernel entry point and stack of process
 static void
 copy_thread(struct proc_struct *proc, uintptr_t esp, struct trapframe *tf) {
-    proc->tf = (struct trapframe *)(proc->kstack + KSTACKSIZE) - 1;
+    proc->tf = (struct trapframe *)(proc->kstack + KSTACKSIZE) - 1;	//指明proc->tf指向的地址，位于这个新进程内核栈的最高位置
     *(proc->tf) = *tf;
     proc->tf->tf_regs.reg_eax = 0;
     proc->tf->tf_esp = esp;
-    proc->tf->tf_eflags |= FL_IF;
-
+    proc->tf->tf_eflags |= FL_IF;	//使能中断
+	
     proc->context.eip = (uintptr_t)forkret;
-    proc->context.esp = (uintptr_t)(proc->tf);
+    proc->context.esp = (uintptr_t)(proc->tf);	//这样也就保证了内核栈从tf之后开始，数据安全。
 }
 
 /* do_fork -     parent process for a new child process
@@ -296,6 +309,33 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    5. insert proc_struct into hash_list && proc_list
     //    6. call wakeup_proc to make the new child process RUNNABLE
     //    7. set ret vaule using child proc's pid
+	
+	if( (proc = alloc_proc()) == NULL ){
+		goto fork_out;
+	}
+	proc->parent = current;
+	if( setup_kstack(proc) != 0 ){
+		goto bad_fork_cleanup_proc;
+	}
+	if( copy_mm(clone_flags, proc) != 0 ){
+		goto bad_fork_cleanup_proc;
+	}
+	copy_thread(proc, stack, tf);
+	
+	bool intr_flag;
+	local_intr_save(intr_flag);
+	{
+		proc->pid = get_pid();
+		hash_proc(proc);
+		list_add(&proc_list, &(proc->list_link));
+		nr_process++;
+	}
+	local_intr_restore(intr_flag);
+	
+	wakeup_proc(proc);
+	
+	ret = proc->pid;
+	
 fork_out:
     return ret;
 
@@ -338,7 +378,7 @@ proc_init(void) {
     if ((idleproc = alloc_proc()) == NULL) {
         panic("cannot alloc idleproc.\n");
     }
-
+	//填写0号内核线程tcb相关信息，根据它填入的信息，它也就是ucore内核，当执行到cpu_idle()时，它的任务也就结束了，然后被调度
     idleproc->pid = 0;
     idleproc->state = PROC_RUNNABLE;
     idleproc->kstack = (uintptr_t)bootstack;
@@ -354,7 +394,7 @@ proc_init(void) {
     }
 
     initproc = find_proc(pid);
-    set_proc_name(initproc, "init");
+    set_proc_name(initproc, "init");	//这里只是填入pcb的相关信息还没正式运行，等待被调度
 
     assert(idleproc != NULL && idleproc->pid == 0);
     assert(initproc != NULL && initproc->pid == 1);
