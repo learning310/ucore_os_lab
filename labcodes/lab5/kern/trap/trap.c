@@ -63,11 +63,15 @@ idt_init(void) {
 	for(i=0; i < sizeof(idt) / sizeof(struct gatedesc); i++){
 		SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
 	}
+	
 	//we need set a swith for user to kernel entry for challenge 1.
 	SETGATE(idt[T_SWITCH_TOK], 1, KERNEL_CS, __vectors[T_SWITCH_TOK], DPL_USER);
  	// ERROR: Can't do this.Because it's finish in for loop.
     // Above statement is for user it have privilege transform.
 	// SETGATE(idt[T_SWITCH_TOU], 1, USER_CS, __vectors[T_SWITCH_TOU], DPL_KERNEL);
+	
+	// lab5 for syscall
+	SETGATE(idt[T_SYSCALL], 1, GD_KTEXT, __vectors[T_SYSCALL], DPL_USER);
 	
 	// load the IDT. It include a base address and a limit
 	lidt(&idt_pd);	// IDTR regsister
@@ -243,6 +247,8 @@ trap_dispatch(struct trapframe *tf) {
 		ticks++;
 		if (ticks % TICK_NUM == 0) {
 			print_ticks();
+			assert(current != NULL);
+			current->need_resched = 1;
 		}		
         break;
     case IRQ_OFFSET + IRQ_COM1:

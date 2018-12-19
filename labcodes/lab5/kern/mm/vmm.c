@@ -164,7 +164,7 @@ mm_destroy(struct mm_struct *mm) {
     kfree(mm); //kfree mm
     mm=NULL;
 }
-
+//设定用户进程的合法内存空间
 int
 mm_map(struct mm_struct *mm, uintptr_t addr, size_t len, uint32_t vm_flags,
        struct vma_struct **vma_store) {
@@ -196,6 +196,7 @@ out:
     return ret;
 }
 
+//取消用户进程的合法内存空间
 int
 dup_mmap(struct mm_struct *to, struct mm_struct *from) {
     assert(to != NULL && from != NULL);
@@ -218,6 +219,7 @@ dup_mmap(struct mm_struct *to, struct mm_struct *from) {
     return 0;
 }
 
+//取消用户进程的合法内存空间
 void
 exit_mmap(struct mm_struct *mm) {
     assert(mm != NULL && mm_count(mm) == 0);
@@ -233,6 +235,7 @@ exit_mmap(struct mm_struct *mm) {
     }
 }
 
+// 用户内存空间内容与内核内存空间内容相互拷贝
 bool
 copy_from_user(struct mm_struct *mm, void *dst, const void *src, size_t len, bool writable) {
     if (!user_mem_check(mm, (uintptr_t)src, len, writable)) {
@@ -536,7 +539,6 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
 		   goto failed;
 	   }
    }
-	
    ret = 0;
 failed:
     return ret;
@@ -554,6 +556,7 @@ failed:
 *	 调用pgdir_alloc_page函数,他会根据所给定的地址和pdt建立对应的映射关系，即根据权限位填写pte表项，完成地址映射。
 */
 
+// 搜索vma链表，检查是否是一个合法的用户空间范围
 bool
 user_mem_check(struct mm_struct *mm, uintptr_t addr, size_t len, bool write) {
     if (mm != NULL) {

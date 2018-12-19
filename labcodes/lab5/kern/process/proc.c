@@ -121,8 +121,8 @@ alloc_proc(void) {
 		proc->cr3 = boot_cr3;
 		proc->flags = 0;
 		memset(proc->name, 0, PROC_NAME_LEN);	// 我认为没必要因为set_proc_name会再做一次
-		proc->wait_state ;
-		
+		proc->wait_state = 0;
+		proc->cptr = proc->yptr= proc->optr = NULL;
     }
     return proc;
 }
@@ -422,7 +422,10 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
 	if( (proc = alloc_proc()) == NULL ){
 		goto fork_out;
 	}
+	
 	proc->parent = current;
+	assert(current->wait_state == 0);	
+	
 	if( setup_kstack(proc) != 0 ){
 		goto bad_fork_cleanup_proc;
 	}
@@ -430,14 +433,13 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
 		goto bad_fork_cleanup_proc;
 	}
 	copy_thread(proc, stack, tf);
-	
+
 	bool intr_flag;
 	local_intr_save(intr_flag);
 	{
 		proc->pid = get_pid();
 		hash_proc(proc);
-		list_add(&proc_list, &(proc->list_link));
-		nr_process++;
+		set_links(proc);
 	}
 	local_intr_restore(intr_flag);
 	
@@ -643,6 +645,12 @@ load_icode(unsigned char *binary, size_t size) {
      *          tf_eip should be the entry point of this binary program (elf->e_entry)
      *          tf_eflags should be set to enable computer to produce Interrupt
      */
+	tf->tf_cs = USER_CS;
+	tf->tf_ds = tf->tf_es = tf->tf_ss =	USER_DS;
+	tf->tf_esp = USTACKTOP;
+	tf->tf_eip = elf->e_entry;
+	tf->tf_eflags |= FL_IF;
+	
     ret = 0;
 out:
     return ret;
